@@ -35,4 +35,4 @@ Detailed Cloudflare Worker deployment and controller relay instructions are in `
 ## Notes
 
 - The worker is used only for controller WebSocket relay traffic.
-- Game upload now stays local to the phone and app flow.
+
