@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">RetrodriveAA</string>
+    <string name="projection_title">RetrodriveAA Projection</string>
+    <string name="projection_waiting_message">Open RetrodriveAA on your phone and approve screen capture to mirror the same UI on Android Auto.</string>
+    <string name="projection_permission_title">Grant RetrodriveAA screen capture</string>
+    <string name="projection_permission_message">Tap to allow RetrodriveAA to mirror the phone UI on Android Auto.</string>
+    <string name="projection_channel_name">RetrodriveAA Projection</string>
+    <string name="projection_active_notification">Android Auto projection is active</string>
+    <string name="projection_action_home">Home</string>
+    <string name="projection_action_back">Back</string>
+    <string name="media_session_channel_name">RD media</string>
+    <string name="media_session_notification_text">RD media is using Android Auto audio playback</string>
+    <string name="media_session_root_title">RD media</string>
+</resources>

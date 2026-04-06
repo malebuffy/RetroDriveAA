@@ -1,0 +1,2174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DOSBox Remote Controller</title>
+    <style>
+        :root {
+            --controller-ui-scale: 1;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            transform-origin: top left;
+        }
+
+        /* Top Navigation Bar */
+        #nav-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            background: #2c2c2c;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .nav-btn {
+            flex: 1;
+            height: 100%;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nav-btn.active {
+            color: #fff;
+            background: #444;
+        }
+
+        /* Content Area */
+        #content {
+            position: absolute;
+            top: 50px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+
+        .mode {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .mode.active {
+            display: flex;
+        }
+
+        /* ===== TRACKPAD MODE ===== */
+        #mode-trackpad {
+            flex-direction: column;
+        }
+
+        #trackpad-area {
+            flex: 1;
+            background: #222;
+            touch-action: none;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #trackpad-area::before {
+            content: 'TRACKPAD';
+            color: #333;
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        #trackpad-buttons {
+            height: 80px;
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            background: #1a1a1a;
+        }
+
+        #trackpad-config-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .trackpad-btn {
+            flex: 1;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+
+        .trackpad-btn:active {
+            background: #00ff00;
+            border-color: #00ff00;
+        }
+
+        .trackpad-btn.mouse-btn {
+            flex: 0.5;
+            background: #444;
+        }
+
+        /* ===== KEYBOARD MODE ===== */
+        #mode-keyboard {
+            flex-direction: column;
+            padding: 10px;
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        .key-row {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        .key {
+            min-width: 40px;
+            height: 45px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+            padding: 5px;
+        }
+
+        .key:active {
+            background: #00ff00;
+            border-color: #00ff00;
+            transform: scale(0.95);
+        }
+
+        .key.active {
+            background: #00aa00;
+            border-color: #00ff00;
+        }
+
+        .key.wide {
+            min-width: 80px;
+        }
+
+        .key.wider {
+            min-width: 120px;
+        }
+
+        /* ===== GAMEPAD MODE ===== */
+        #mode-gamepad {
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-around;
+            padding: 20px;
+        }
+
+        #gamepad-config-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        #gamepad-controls {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* D-Pad */
+        #dpad {
+            width: 200px;
+            height: 200px;
+            position: relative;
+        }
+
+        .dpad-btn {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: #333;
+            border: 3px solid #555;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+        }
+
+        .dpad-btn:active {
+            background: #00ff00;
+            border-color: #00ff00;
+        }
+
+        .dpad-btn.up { top: 0; left: 70px; }
+        .dpad-btn.down { bottom: 0; left: 70px; }
+        .dpad-btn.left { top: 70px; left: 0; }
+        .dpad-btn.right { top: 70px; right: 0; }
+
+        /* Action Buttons */
+        #action-buttons {
+            width: 200px;
+            height: 200px;
+            position: relative;
+        }
+
+        .action-btn {
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            background: #333;
+            border: 3px solid #555;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+        }
+
+        .action-btn:active {
+            background: #ff0000;
+            border-color: #ff0000;
+        }
+
+        .action-btn.a { top: calc(50% - 35px + 60px); left: calc(50% - 35px); background: #c00; }
+        .action-btn.b { top: calc(50% - 35px); left: calc(50% - 35px + 60px); background: #cc0; }
+        .action-btn.x { top: calc(50% - 35px); left: calc(50% - 35px - 60px); background: #0c0; }
+        .action-btn.y { top: calc(50% - 35px - 60px); left: calc(50% - 35px); background: #00c; }
+
+        /* ===== JOYSTICK MODE ===== */
+        #mode-joystick {
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            overflow: hidden;
+        }
+
+        #joystick-config-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 40px;
+            height: 40px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        #joystick-controls {
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            gap: 20px;
+        }
+
+        #joystick-left {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #joystick-area {
+            position: relative;
+            width: min(50vw, 200px);
+            height: min(50vw, 200px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        #joystick-base {
+            position: absolute;
+            width: 70%;
+            height: 70%;
+            background: radial-gradient(circle, #2a2a2a 0%, #1a1a1a 100%);
+            border: 3px solid #444;
+            border-radius: 50%;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5),
+                        inset 0 2px 10px rgba(255,255,255,0.1);
+        }
+
+        #joystick-stick {
+            position: absolute;
+            width: 35%;
+            height: 35%;
+            background: radial-gradient(circle at 30% 30%, #4CAF50 0%, #2e7d32 100%);
+            border: 3px solid #1b5e20;
+            border-radius: 50%;
+            cursor: grab;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.6),
+                        inset 0 2px 5px rgba(255,255,255,0.3);
+            transition: box-shadow 0.1s;
+            touch-action: none;
+            z-index: 10;
+        }
+
+        #joystick-stick:active {
+            cursor: grabbing;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.8),
+                        inset 0 2px 5px rgba(255,255,255,0.3);
+        }
+
+        #joystick-info {
+            text-align: center;
+            color: #888;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        /* Joystick Action Buttons */
+        #joystick-action-buttons {
+            width: min(50vw, 200px);
+            height: min(50vw, 200px);
+            position: relative;
+        }
+
+        .joystick-action-btn {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: #333;
+            border: 3px solid #555;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+            touch-action: manipulation;
+        }
+
+        .joystick-action-btn:active {
+            transform: scale(0.9);
+        }
+
+        .joystick-action-btn.a { top: calc(50% - 30px + 55px); left: calc(50% - 30px); background: #c00; }
+        .joystick-action-btn.b { top: calc(50% - 30px); left: calc(50% - 30px + 55px); background: #cc0; }
+        .joystick-action-btn.x { top: calc(50% - 30px); left: calc(50% - 30px - 55px); background: #0c0; }
+        .joystick-action-btn.y { top: calc(50% - 30px - 55px); left: calc(50% - 30px); background: #00c; }
+
+        .joystick-action-btn.a:active { background: #ff0000; border-color: #ff0000; }
+        .joystick-action-btn.b:active { background: #ffff00; border-color: #ffff00; }
+        .joystick-action-btn.x:active { background: #00ff00; border-color: #00ff00; }
+        .joystick-action-btn.y:active { background: #0000ff; border-color: #0000ff; }
+
+        /* Config Modal */
+        #config-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #config-modal.active {
+            display: flex;
+        }
+
+        #ui-settings-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 2100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #ui-settings-modal.active {
+            display: flex;
+        }
+
+        #ui-settings-content {
+            background: #2c2c2c;
+            border-radius: 10px;
+            padding: 20px;
+            width: min(92vw, 420px);
+        }
+
+        #font-size-value {
+            color: #9fe89f;
+            font-weight: bold;
+            font-size: 14px;
+            text-align: right;
+        }
+
+        #font-size-slider {
+            width: 100%;
+        }
+
+        #config-content {
+            background: #2c2c2c;
+            border-radius: 10px;
+            padding: 20px;
+            max-width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+
+        .config-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #444;
+        }
+
+        .config-btn {
+            background: #444;
+            border: 2px solid #666;
+            border-radius: 6px;
+            color: #fff;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .config-btn:active {
+            background: #555;
+        }
+
+        #connection-status {
+            position: fixed;
+            top: 58px;
+            right: 10px;
+            padding: 8px 16px;
+            background: #c00;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 999;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+
+        #connection-status.connected {
+            background: #0c0;
+        }
+
+        #connection-status.hidden {
+            opacity: 0;
+        }
+
+        /* Orientation Warning */
+        #orientation-warning {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #1a1a1a;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #orientation-warning.show {
+            display: flex;
+        }
+
+        .rotate-icon {
+            font-size: 80px;
+            margin-bottom: 30px;
+            animation: rotate 2s ease-in-out infinite;
+        }
+
+        @keyframes rotate {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(90deg); }
+        }
+
+        #orientation-warning h2 {
+            font-size: 24px;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+
+        #orientation-warning p {
+            font-size: 18px;
+            color: #888;
+        }
+
+        /* Portrait controller mode */
+        #portrait-layout {
+            display: none;
+            position: absolute;
+            top: 50px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 10px;
+            overflow-y: auto;
+            gap: 10px;
+            flex-direction: column;
+            background: #1a1a1a;
+        }
+
+        .portrait-row {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .portrait-key {
+            min-width: 48px;
+            height: 42px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: bold;
+            padding: 0 8px;
+            touch-action: manipulation;
+        }
+
+        .portrait-key:active {
+            background: #00aa00;
+            border-color: #00ff00;
+        }
+
+        .portrait-key.esc {
+            background: #7a1f1f;
+            border-color: #a33;
+            min-width: 64px;
+        }
+
+        .portrait-key.esc:active {
+            background: #c00;
+            border-color: #f55;
+        }
+
+        #portrait-text-wrap {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        #portrait-text-input {
+            flex: 1;
+            min-height: 44px;
+            border-radius: 8px;
+            border: 2px solid #555;
+            background: #222;
+            color: #fff;
+            padding: 10px;
+            font-size: 16px;
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        #portrait-send-btn {
+            min-width: 92px;
+            height: 44px;
+            border-radius: 8px;
+            border: 2px solid #555;
+            background: #2d5;
+            color: #111;
+            font-weight: bold;
+            touch-action: manipulation;
+        }
+
+        #portrait-enter-btn {
+            min-width: 88px;
+            height: 44px;
+            border-radius: 8px;
+            border: 2px solid #555;
+            background: #4b4fda;
+            color: #fff;
+            font-weight: bold;
+            touch-action: manipulation;
+        }
+
+        #portrait-help {
+            font-size: 12px;
+            color: #9aa;
+            text-align: center;
+        }
+
+        #portrait-fkeys {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        #portrait-gamepad {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            align-items: center;
+        }
+
+        #portrait-dpad {
+            display: grid;
+            grid-template-columns: repeat(3, 46px);
+            grid-template-rows: repeat(3, 46px);
+            gap: 6px;
+            justify-content: center;
+            align-items: center;
+            margin: 0 auto;
+        }
+
+        .portrait-arrow {
+            width: 46px;
+            height: 46px;
+            border-radius: 10px;
+            border: 2px solid #666;
+            background: #2f2f2f;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+        }
+
+        .portrait-arrow:active {
+            background: #00aa00;
+            border-color: #00ff00;
+        }
+
+        .portrait-arrow.up { grid-column: 2; grid-row: 1; }
+        .portrait-arrow.left { grid-column: 1; grid-row: 2; }
+        .portrait-arrow.right { grid-column: 3; grid-row: 2; }
+        .portrait-arrow.down { grid-column: 2; grid-row: 3; }
+
+        #portrait-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .portrait-action {
+            height: 42px;
+            border-radius: 10px;
+            border: 2px solid #666;
+            color: #fff;
+            font-weight: 900;
+            touch-action: manipulation;
+        }
+
+        .portrait-action.a { background: #b32121; }
+        .portrait-action.b { background: #b39b21; }
+        .portrait-action.x { background: #22914a; }
+        .portrait-action.y { background: #1f4fa1; }
+
+        .portrait-action:active {
+            filter: brightness(1.15);
+        }
+
+        #portrait-rotate-hint {
+            position: fixed;
+            top: 56px;
+            left: 10px;
+            right: 10px;
+            background: rgba(15, 15, 15, 0.95);
+            border: 1px solid #555;
+            color: #fff;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 13px;
+            text-align: center;
+            z-index: 1500;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        #portrait-rotate-hint.show {
+            opacity: 1;
+        }
+
+        @media (orientation: portrait) {
+            #content {
+                display: none;
+            }
+            #portrait-layout {
+                display: flex;
+            }
+            #orientation-warning {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Orientation Warning -->
+    <div id="orientation-warning">
+        <div class="rotate-icon">📱</div>
+        <h2>Please rotate your device</h2>
+        <p>Turn your phone to landscape mode to use the controller</p>
+    </div>
+
+    <!-- Connection Status -->
+    <div id="connection-status">DISCONNECTED</div>
+    <div id="portrait-rotate-hint">Rotate phone to landscape to use Trackpad, Gamepad, and Joystick views.</div>
+
+    <!-- Navigation Bar -->
+    <div id="nav-bar">
+        <button class="nav-btn active" data-mode="trackpad">TRACKPAD</button>
+        <button class="nav-btn" data-mode="keyboard">KEYBOARD</button>
+        <button class="nav-btn" data-mode="gamepad">GAMEPAD</button>
+        <button class="nav-btn" data-mode="joystick">JOYSTICK</button>
+        <button class="nav-btn" id="ui-settings-btn">UI</button>
+    </div>
+
+    <!-- Content Area -->
+    <div id="content">
+        <!-- TRACKPAD MODE -->
+        <div id="mode-trackpad" class="mode active">
+            <button id="trackpad-config-btn">⚙️</button>
+            <div id="trackpad-area"></div>
+            <div id="trackpad-buttons">
+                <button class="trackpad-btn mouse-btn" data-button="1">L</button>
+                <button class="trackpad-btn" data-key="ESC">ESC</button>
+                <button class="trackpad-btn" data-key="ENTER">ENTER</button>
+                <button class="trackpad-btn" data-key="SPACE">SPACE</button>
+                <button class="trackpad-btn mouse-btn" data-button="2">R</button>
+            </div>
+        </div>
+
+        <!-- KEYBOARD MODE -->
+        <div id="mode-keyboard" class="mode">
+            <div class="key-row">
+                <div class="key" data-key="ESC">Esc</div>
+                <div class="key" data-key="F1">F1</div>
+                <div class="key" data-key="F2">F2</div>
+                <div class="key" data-key="F3">F3</div>
+                <div class="key" data-key="F4">F4</div>
+                <div class="key" data-key="F5">F5</div>
+                <div class="key" data-key="F6">F6</div>
+                <div class="key" data-key="F7">F7</div>
+                <div class="key" data-key="F8">F8</div>
+                <div class="key" data-key="F9">F9</div>
+                <div class="key" data-key="F10">F10</div>
+                <div class="key" data-key="F11">F11</div>
+                <div class="key" data-key="F12">F12</div>
+            </div>
+            <div class="key-row">
+                <div class="key" data-key="~">`</div>
+                <div class="key" data-key="1">1</div>
+                <div class="key" data-key="2">2</div>
+                <div class="key" data-key="3">3</div>
+                <div class="key" data-key="4">4</div>
+                <div class="key" data-key="5">5</div>
+                <div class="key" data-key="6">6</div>
+                <div class="key" data-key="7">7</div>
+                <div class="key" data-key="8">8</div>
+                <div class="key" data-key="9">9</div>
+                <div class="key" data-key="0">0</div>
+                <div class="key" data-key="-">-</div>
+                <div class="key" data-key="=">=</div>
+                <div class="key wide" data-key="BACKSPACE">←</div>
+            </div>
+            <div class="key-row">
+                <div class="key" data-key="TAB">Tab</div>
+                <div class="key" data-key="Q">q</div>
+                <div class="key" data-key="W">w</div>
+                <div class="key" data-key="E">e</div>
+                <div class="key" data-key="R">r</div>
+                <div class="key" data-key="T">t</div>
+                <div class="key" data-key="Y">y</div>
+                <div class="key" data-key="U">u</div>
+                <div class="key" data-key="I">i</div>
+                <div class="key" data-key="O">o</div>
+                <div class="key" data-key="P">p</div>
+                <div class="key" data-key="[">[</div>
+                <div class="key" data-key="]">]</div>
+                <div class="key" data-key="\">\\</div>
+            </div>
+            <div class="key-row">
+                <div class="key wide" data-key="CAPS">Caps</div>
+                <div class="key" data-key="A">a</div>
+                <div class="key" data-key="S">s</div>
+                <div class="key" data-key="D">d</div>
+                <div class="key" data-key="F">f</div>
+                <div class="key" data-key="G">g</div>
+                <div class="key" data-key="H">h</div>
+                <div class="key" data-key="J">j</div>
+                <div class="key" data-key="K">k</div>
+                <div class="key" data-key="L">l</div>
+                <div class="key" data-key=";">;</div>
+                <div class="key" data-key="'">'</div>
+                <div class="key wide" data-key="ENTER">↵</div>
+            </div>
+            <div class="key-row">
+                <div class="key wider" data-key="SHIFT">Shift</div>
+                <div class="key" data-key="Z">z</div>
+                <div class="key" data-key="X">x</div>
+                <div class="key" data-key="C">c</div>
+                <div class="key" data-key="V">v</div>
+                <div class="key" data-key="B">b</div>
+                <div class="key" data-key="N">n</div>
+                <div class="key" data-key="M">m</div>
+                <div class="key" data-key=",">,</div>
+                <div class="key" data-key=".">.</div>
+                <div class="key" data-key="/">/</div>
+                <div class="key wider" data-key="SHIFT">Shift</div>
+            </div>
+            <div class="key-row">
+                <div class="key wide" data-key="CTRL">Ctrl</div>
+                <div class="key" data-key="ALT">Alt</div>
+                <div class="key wider" data-key="SPACE">Space</div>
+                <div class="key" data-key="ALT">Alt</div>
+                <div class="key wide" data-key="CTRL">Ctrl</div>
+            </div>
+            <div class="key-row">
+                <div class="key" data-key="UP">↑</div>
+                <div class="key" data-key="DOWN">↓</div>
+                <div class="key" data-key="LEFT">←</div>
+                <div class="key" data-key="RIGHT">→</div>
+            </div>
+        </div>
+
+        <!-- GAMEPAD MODE -->
+        <div id="mode-gamepad" class="mode">
+            <button id="gamepad-config-btn">⚙️</button>
+            <div id="gamepad-controls">
+                <!-- D-Pad -->
+                <div id="dpad">
+                    <button class="dpad-btn up" data-dir="UP">↑</button>
+                    <button class="dpad-btn down" data-dir="DOWN">↓</button>
+                    <button class="dpad-btn left" data-dir="LEFT">←</button>
+                    <button class="dpad-btn right" data-dir="RIGHT">→</button>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div id="action-buttons">
+                    <button class="action-btn a" data-btn="A">A</button>
+                    <button class="action-btn b" data-btn="B">B</button>
+                    <button class="action-btn x" data-btn="X">X</button>
+                    <button class="action-btn y" data-btn="Y">Y</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOYSTICK MODE -->
+        <div id="mode-joystick" class="mode">
+            <button id="joystick-config-btn">⚙️</button>
+            <div id="joystick-controls">
+                <!-- Joystick Stick -->
+                <div id="joystick-left">
+                    <div id="joystick-area">
+                        <div id="joystick-base"></div>
+                        <div id="joystick-stick"></div>
+                    </div>
+                    <div id="joystick-info">Drag stick</div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div id="joystick-action-buttons">
+                    <button class="joystick-action-btn a" data-btn="A">A</button>
+                    <button class="joystick-action-btn b" data-btn="B">B</button>
+                    <button class="joystick-action-btn x" data-btn="X">X</button>
+                    <button class="joystick-action-btn y" data-btn="Y">Y</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="portrait-layout">
+        <div class="portrait-row" id="portrait-fkeys">
+            <button class="portrait-key" data-key="F1">F1</button>
+            <button class="portrait-key" data-key="F2">F2</button>
+            <button class="portrait-key" data-key="F3">F3</button>
+            <button class="portrait-key" data-key="F4">F4</button>
+            <button class="portrait-key" data-key="F5">F5</button>
+            <button class="portrait-key" data-key="F6">F6</button>
+            <button class="portrait-key" data-key="F7">F7</button>
+            <button class="portrait-key" data-key="F8">F8</button>
+            <button class="portrait-key" data-key="F9">F9</button>
+            <button class="portrait-key" data-key="F10">F10</button>
+            <button class="portrait-key" data-key="F11">F11</button>
+            <button class="portrait-key" data-key="F12">F12</button>
+        </div>
+
+        <div id="portrait-gamepad">
+            <div id="portrait-dpad">
+                <button class="portrait-arrow up" data-btn="UP">▲</button>
+                <button class="portrait-arrow left" data-btn="LEFT">◀</button>
+                <button class="portrait-arrow right" data-btn="RIGHT">▶</button>
+                <button class="portrait-arrow down" data-btn="DOWN">▼</button>
+            </div>
+            <div id="portrait-actions">
+                <button class="portrait-action a" data-btn="A">A</button>
+                <button class="portrait-action b" data-btn="B">B</button>
+                <button class="portrait-action x" data-btn="X">X</button>
+                <button class="portrait-action y" data-btn="Y">Y</button>
+            </div>
+        </div>
+
+        <div id="portrait-text-wrap">
+            <button class="portrait-key esc" data-key="ESC">Esc</button>
+            <input id="portrait-text-input" type="text" placeholder="Type text and press Enter / Send" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+            <button id="portrait-enter-btn">Enter</button>
+            <button id="portrait-send-btn">Send</button>
+        </div>
+        <div id="portrait-help">Uses your phone keyboard. Enter sends one full line.</div>
+    </div>
+
+    <!-- Config Modal -->
+    <div id="config-modal">
+        <div id="config-content">
+            <h2 id="config-title" style="margin-bottom: 20px;">Gamepad Configuration</h2>
+            <div class="config-row" id="config-dpad-row">
+                <span>D-Pad Mode:</span>
+                <button class="config-btn" id="dpad-mode-toggle">Arrow Keys</button>
+            </div>
+            <div class="config-row" id="config-sensitivity-row" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span>Sensitivity:</span>
+                    <span id="sensitivity-value">100%</span>
+                </div>
+                <input id="sensitivity-slider" type="range" min="1" max="100" value="100" style="width: 100%;">
+            </div>
+            <div class="config-row" id="config-btn-a-row">
+                <span>Button A:</span>
+                <button class="config-btn" id="btn-a-config">Enter</button>
+            </div>
+            <div class="config-row" id="config-btn-b-row">
+                <span>Button B:</span>
+                <button class="config-btn" id="btn-b-config">Escape</button>
+            </div>
+            <div class="config-row" id="config-btn-x-row">
+                <span>Button X:</span>
+                <button class="config-btn" id="btn-x-config">Space</button>
+            </div>
+            <div class="config-row" id="config-btn-y-row">
+                <span>Button Y:</span>
+                <button class="config-btn" id="btn-y-config">Shift</button>
+            </div>
+            <div class="config-row">
+                <button class="config-btn" style="width: 100%; background: #c00;" onclick="closeConfig()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="ui-settings-modal">
+        <div id="ui-settings-content">
+            <h2 style="margin-bottom: 16px;">UI Settings</h2>
+            <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 10px; border-bottom: none; padding: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span>Font Size</span>
+                    <span id="font-size-value">92%</span>
+                </div>
+                <input id="font-size-slider" type="range" min="85" max="140" step="1" value="92">
+            </div>
+            <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="config-btn" id="ui-settings-reset">Reset</button>
+                <button class="config-btn" id="ui-settings-close" style="background: #1f6b2b;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('=== Remote Controller Script Loaded ===');
+        
+        // WebSocket connection
+        let ws = null;
+        let isConnected = false;
+        let capsLockOn = false; // Caps lock state
+        let connectionHideTimer = null;
+        let rotateHintTimer = null;
+        let realtimeFlushScheduled = false;
+        let reconnectTimer = null;
+        let heartbeatTimer = null;
+        let isWsConnecting = false;
+        const WS_RECONNECT_DELAY_MS = 1200;
+        const WS_HEARTBEAT_MS = 15000;
+        let uiSettings = {
+            fontPercent: 92
+        };
+        const pendingRealtime = {
+            MOUSE: null,
+            JOYSTICK: null
+        };
+
+        // Gamepad configuration (stored in localStorage)
+        let gamepadConfig = {
+            dpadMode: 'arrows', // 'arrows' or 'wasd'
+            buttonA: 'ENTER',
+            buttonB: 'ESC',
+            buttonX: 'SPACE',
+            buttonY: 'SHIFT'
+        };
+
+        // Joystick configuration (stored in localStorage)
+        let joystickConfig = {
+            buttonA: 'SPACE',
+            buttonB: 'CTRL',
+            buttonX: 'ENTER',
+            buttonY: 'ESC'
+        };
+
+        // Shared controller settings (stored in localStorage)
+        let controllerSettings = {
+            trackpadSensitivity: 100,
+            joystickSensitivity: 100
+        };
+
+        // Current config mode (for modal)
+        let currentConfigMode = 'gamepad'; // 'gamepad' or 'joystick'
+
+        // Key code mapping (JavaScript keyCode to name)
+        const keyMap = {
+            'ESC': 27, 'F1': 112, 'F2': 113, 'F3': 114, 'F4': 115, 'F5': 116,
+            'F6': 117, 'F7': 118, 'F8': 119, 'F9': 120, 'F10': 121, 'F11': 122, 'F12': 123,
+            '~': 192, '1': 49, '2': 50, '3': 51, '4': 52, '5': 53,
+            '6': 54, '7': 55, '8': 56, '9': 57, '0': 48,
+            '-': 189, '=': 187, 'BACKSPACE': 8,
+            'TAB': 9, 'Q': 81, 'W': 87, 'E': 69, 'R': 82, 'T': 84,
+            'Y': 89, 'U': 85, 'I': 73, 'O': 79, 'P': 80,
+            '[': 219, ']': 221, '\\': 220,
+            'CAPS': 20, 'A': 65, 'S': 83, 'D': 68, 'F': 70, 'G': 71,
+            'H': 72, 'J': 74, 'K': 75, 'L': 76, ';': 186, "'": 222,
+            'ENTER': 13,
+            'SHIFT': 16, 'Z': 90, 'X': 88, 'C': 67, 'V': 86, 'B': 66,
+            'N': 78, 'M': 77, ',': 188, '.': 190, '/': 191,
+            'CTRL': 17, 'ALT': 18, 'SPACE': 32,
+            'UP': 38, 'DOWN': 40, 'LEFT': 37, 'RIGHT': 39
+        };
+
+        // Initialize
+        function init() {
+            console.log('Initializing Remote Controller...');
+            loadUiSettings();
+            applyUiScale();
+            loadConfig();
+            connectWebSocket();
+            setupNavigation();
+            setupTrackpad();
+            setupKeyboard();
+            setupGamepad();
+            setupJoystick();
+            setupPortraitControls();
+            setupUiSettings();
+            checkOrientation(); // Check initial orientation
+            window.addEventListener('orientationchange', checkOrientation);
+            window.addEventListener('resize', checkOrientation);
+            window.addEventListener('focus', ensureConnected);
+            document.addEventListener('visibilitychange', ensureConnected);
+            console.log('Initialization complete');
+        }
+
+        function loadUiSettings() {
+            try {
+                const raw = localStorage.getItem('controllerUiSettings');
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.fontPercent === 'number') {
+                    uiSettings.fontPercent = Math.max(85, Math.min(140, Math.round(parsed.fontPercent)));
+                }
+            } catch (e) {
+                console.warn('Failed to load UI settings', e);
+            }
+        }
+
+        function saveUiSettings() {
+            localStorage.setItem('controllerUiSettings', JSON.stringify(uiSettings));
+        }
+
+        function applyUiScale() {
+            const scale = uiSettings.fontPercent / 100;
+
+            if (typeof document.body.style.zoom !== 'undefined') {
+                document.body.style.zoom = String(scale);
+            } else {
+                document.body.style.transform = `scale(${scale})`;
+                document.body.style.width = `${100 / scale}%`;
+                document.body.style.height = `${100 / scale}%`;
+            }
+        }
+
+        function setupUiSettings() {
+            const settingsBtn = document.getElementById('ui-settings-btn');
+            const modal = document.getElementById('ui-settings-modal');
+            const closeBtn = document.getElementById('ui-settings-close');
+            const resetBtn = document.getElementById('ui-settings-reset');
+            const slider = document.getElementById('font-size-slider');
+            const value = document.getElementById('font-size-value');
+
+            if (!settingsBtn || !modal || !closeBtn || !resetBtn || !slider || !value) return;
+
+            const syncUi = () => {
+                slider.value = String(uiSettings.fontPercent);
+                value.textContent = `${uiSettings.fontPercent}%`;
+            };
+
+            syncUi();
+
+            settingsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                syncUi();
+                modal.classList.add('active');
+            });
+
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                modal.classList.remove('active');
+            });
+
+            resetBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                uiSettings.fontPercent = 92;
+                saveUiSettings();
+                applyUiScale();
+                syncUi();
+            });
+
+            slider.addEventListener('input', (e) => {
+                const next = parseInt(e.target.value, 10);
+                uiSettings.fontPercent = Math.max(85, Math.min(140, Number.isFinite(next) ? next : 92));
+                value.textContent = `${uiSettings.fontPercent}%`;
+                saveUiSettings();
+                applyUiScale();
+            });
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        }
+
+        // Check device orientation
+        function checkOrientation() {
+            const warning = document.getElementById('orientation-warning');
+            const isLandscape = window.innerWidth > window.innerHeight;
+
+            if (!warning) return;
+            if (!isLandscape) {
+                warning.classList.remove('show');
+                forcePortraitKeyboardTab();
+                return;
+            }
+            
+            warning.classList.remove('show');
+            console.log('Device in landscape mode - controller enabled');
+        }
+
+        function forcePortraitKeyboardTab() {
+            const navBtns = document.querySelectorAll('.nav-btn');
+            navBtns.forEach(btn => btn.classList.remove('active'));
+            const keyboardBtn = document.querySelector('.nav-btn[data-mode="keyboard"]');
+            if (keyboardBtn) {
+                keyboardBtn.classList.add('active');
+            }
+        }
+
+        function showRotateHint() {
+            const hint = document.getElementById('portrait-rotate-hint');
+            if (!hint) return;
+            hint.classList.add('show');
+            if (rotateHintTimer) {
+                clearTimeout(rotateHintTimer);
+            }
+            rotateHintTimer = setTimeout(() => hint.classList.remove('show'), 2200);
+        }
+
+        // Load configuration from localStorage
+        function loadConfig() {
+            const savedGamepad = localStorage.getItem('gamepadConfig');
+            if (savedGamepad) {
+                gamepadConfig = JSON.parse(savedGamepad);
+            }
+            const savedJoystick = localStorage.getItem('joystickConfig');
+            if (savedJoystick) {
+                joystickConfig = JSON.parse(savedJoystick);
+            }
+            const savedControllerSettings = localStorage.getItem('controllerSettings');
+            if (savedControllerSettings) {
+                const parsed = JSON.parse(savedControllerSettings);
+                if (parsed) {
+                    if (typeof parsed.trackpadSensitivity === 'number') {
+                        controllerSettings.trackpadSensitivity = Math.max(1, Math.min(100, Math.round(parsed.trackpadSensitivity)));
+                    }
+                    if (typeof parsed.joystickSensitivity === 'number') {
+                        controllerSettings.joystickSensitivity = Math.max(1, Math.min(100, Math.round(parsed.joystickSensitivity)));
+                    }
+                    // Backward compatibility with older single sensitivity setting.
+                    if (typeof parsed.sensitivity === 'number') {
+                        const legacySensitivity = Math.max(1, Math.min(100, Math.round(parsed.sensitivity)));
+                        if (typeof parsed.trackpadSensitivity !== 'number') {
+                            controllerSettings.trackpadSensitivity = legacySensitivity;
+                        }
+                        if (typeof parsed.joystickSensitivity !== 'number') {
+                            controllerSettings.joystickSensitivity = legacySensitivity;
+                        }
+                    }
+                }
+            }
+            updateConfigUI();
+        }
+
+        // Save configuration to localStorage
+        function saveConfig() {
+            localStorage.setItem('gamepadConfig', JSON.stringify(gamepadConfig));
+            localStorage.setItem('joystickConfig', JSON.stringify(joystickConfig));
+            localStorage.setItem('controllerSettings', JSON.stringify(controllerSettings));
+        }
+
+        function clearReconnectTimer() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+        }
+
+        function scheduleReconnect(reason = 'unknown') {
+            if (reconnectTimer) return;
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                console.log('Reconnecting WebSocket. Reason:', reason);
+                connectWebSocket();
+            }, WS_RECONNECT_DELAY_MS);
+        }
+
+        function startHeartbeat() {
+            stopHeartbeat();
+            heartbeatTimer = setInterval(() => {
+                if (!ws || !isConnected) return;
+                try {
+                    ws.send(JSON.stringify({ type: 'PING', timestamp: Date.now() }));
+                } catch (e) {
+                    console.warn('Heartbeat send failed:', e);
+                    scheduleReconnect('heartbeat-send-failed');
+                }
+            }, WS_HEARTBEAT_MS);
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+            }
+        }
+
+        function ensureConnected() {
+            if (document.visibilityState === 'hidden') return;
+            if (!isConnected && (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING)) {
+                scheduleReconnect('ensure-connected');
+            }
+        }
+
+        // Connect WebSocket
+        function connectWebSocket() {
+            if (isWsConnecting) {
+                return;
+            }
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+                return;
+            }
+
+            const params = new URLSearchParams(window.location.search);
+            const relayBase = params.get('ws');
+            const sessionId = params.get('session');
+            let url;
+
+            if (relayBase && sessionId) {
+                url = `${relayBase}?session=${encodeURIComponent(sessionId)}&role=phone`;
+            } else {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                url = `${protocol}//${window.location.host}`;
+            }
+            
+            clearReconnectTimer();
+            isWsConnecting = true;
+            console.log('Attempting WebSocket connection to:', url);
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                isWsConnecting = false;
+                isConnected = true;
+                startHeartbeat();
+                const status = document.getElementById('connection-status');
+                status.textContent = 'CONNECTED';
+                status.classList.add('connected');
+                status.classList.remove('hidden');
+                if (connectionHideTimer) {
+                    clearTimeout(connectionHideTimer);
+                }
+                connectionHideTimer = setTimeout(() => status.classList.add('hidden'), 2500);
+                console.log('Connected to DOSBox');
+                
+                // Send a test message to verify the connection
+                try {
+                    ws.send(JSON.stringify({type: 'CONNECT', timestamp: Date.now()}));
+                    console.log('Sent connection test message');
+                } catch (e) {
+                    console.error('Failed to send test message:', e);
+                }
+            };
+            
+            ws.onclose = (event) => {
+                isWsConnecting = false;
+                isConnected = false;
+                stopHeartbeat();
+                const status = document.getElementById('connection-status');
+                status.textContent = 'DISCONNECTED';
+                status.classList.remove('connected');
+                status.classList.remove('hidden');
+                if (connectionHideTimer) {
+                    clearTimeout(connectionHideTimer);
+                    connectionHideTimer = null;
+                }
+                console.log('Disconnected from DOSBox. Code:', event.code, 'Reason:', event.reason, 'Clean:', event.wasClean);
+                scheduleReconnect('socket-closed');
+            };
+            
+            ws.onerror = (error) => {
+                isWsConnecting = false;
+                console.error('WebSocket error:', error);
+                if (!isConnected) {
+                    scheduleReconnect('socket-error');
+                }
+            };
+            
+            ws.onmessage = (event) => {
+                console.log('Received message:', event.data);
+            };
+        }
+
+        // Send message to server
+        function sendMessage(message) {
+            if (ws && isConnected) {
+                if (message && (message.type === 'MOUSE' || message.type === 'JOYSTICK')) {
+                    pendingRealtime[message.type] = message;
+                    if (!realtimeFlushScheduled) {
+                        realtimeFlushScheduled = true;
+                        requestAnimationFrame(() => {
+                            realtimeFlushScheduled = false;
+                            ['MOUSE', 'JOYSTICK'].forEach((type) => {
+                                const pending = pendingRealtime[type];
+                                if (pending && ws && isConnected) {
+                                    if (ws.readyState === WebSocket.OPEN) {
+                                        try {
+                                            ws.send(JSON.stringify(pending));
+                                        } catch (e) {
+                                            console.warn('Realtime send failed:', e);
+                                            isConnected = false;
+                                            scheduleReconnect('realtime-send-failed');
+                                        }
+                                    } else {
+                                        isConnected = false;
+                                        scheduleReconnect('realtime-send-state-not-open');
+                                    }
+                                }
+                                pendingRealtime[type] = null;
+                            });
+                        });
+                    }
+                    return;
+                }
+
+                const jsonStr = JSON.stringify(message);
+                console.log('Sending message:', jsonStr);
+                if (ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(jsonStr);
+                    } catch (e) {
+                        console.warn('WebSocket send failed:', e);
+                        isConnected = false;
+                        scheduleReconnect('send-failed');
+                    }
+                } else {
+                    isConnected = false;
+                    scheduleReconnect('send-state-not-open');
+                }
+            } else {
+                console.warn('Cannot send message - not connected. Message:', message);
+                scheduleReconnect('send-while-disconnected');
+            }
+        }
+
+        function sendTextLine(text) {
+            const trimmed = (text || '').trim();
+            if (!trimmed) return;
+            sendMessage({
+                type: 'TEXT_LINE',
+                text: trimmed,
+                timestamp: Date.now()
+            });
+        }
+
+        // Setup navigation
+        function setupNavigation() {
+            const navBtns = document.querySelectorAll('.nav-btn');
+            navBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const mode = btn.dataset.mode;
+
+                    const isPortrait = window.innerHeight >= window.innerWidth;
+                    if (isPortrait && mode !== 'keyboard') {
+                        forcePortraitKeyboardTab();
+                        showRotateHint();
+                        return;
+                    }
+                    
+                    // Update active nav button
+                    navBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    // Show selected mode
+                    document.querySelectorAll('.mode').forEach(m => m.classList.remove('active'));
+                    document.getElementById(`mode-${mode}`).classList.add('active');
+                });
+            });
+        }
+
+        // Setup Trackpad
+        function setupTrackpad() {
+            const trackpad = document.getElementById('trackpad-area');
+            let lastX = 0, lastY = 0;
+            let isTracking = false;
+            let lastSendTime = 0;
+            const THROTTLE_MS = 16; // ~60fps max, reduces message spam
+
+            document.getElementById('trackpad-config-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                openConfig('trackpad');
+            });
+
+            trackpad.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+                isTracking = true;
+                lastSendTime = 0; // Reset throttle on new touch
+                console.log('Trackpad touchstart at:', lastX, lastY);
+            });
+
+            trackpad.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (!isTracking) return;
+                
+                // Throttle messages to reduce spam
+                const now = Date.now();
+                if (now - lastSendTime < THROTTLE_MS) {
+                    return; // Skip this event, too soon
+                }
+                lastSendTime = now;
+                
+                const touch = e.touches[0];
+                const dx = touch.clientX - lastX;
+                const dy = touch.clientY - lastY;
+                
+                // Only send if there's actual movement
+                if (dx === 0 && dy === 0) return;
+                
+                // Trackpad sensitivity scaling (1%..100%)
+                const sensitivityScale = controllerSettings.trackpadSensitivity / 100;
+                const msg = {
+                    type: 'MOUSE',
+                    x: Math.round(dx * 8 * sensitivityScale),
+                    y: Math.round(dy * 8 * sensitivityScale)
+                };
+                console.log('Trackpad delta: dx=' + msg.x + ', dy=' + msg.y);
+                sendMessage(msg);
+                
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+            });
+
+            trackpad.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                isTracking = false;
+                console.log('Trackpad touchend');
+                // Send end event to reset accumulators on server side
+                sendMessage({type: 'TRACKPAD_END'});
+            });
+
+            // Mouse events for desktop testing
+            trackpad.addEventListener('mousedown', (e) => {
+                // Left click
+                if (e.button === 0) {
+                    console.log('Left mouse button DOWN');
+                    sendMessage({ type: 'MOUSE_BUTTON', button: 1, action: 'DOWN' });
+                }
+                // Right click
+                else if (e.button === 2) {
+                    console.log('Right mouse button DOWN');
+                    sendMessage({ type: 'MOUSE_BUTTON', button: 2, action: 'DOWN' });
+                }
+            });
+
+            trackpad.addEventListener('mouseup', (e) => {
+                if (e.button === 0) {
+                    console.log('Left mouse button UP');
+                    sendMessage({ type: 'MOUSE_BUTTON', button: 1, action: 'UP' });
+                }
+                else if (e.button === 2) {
+                    console.log('Right mouse button UP');
+                    sendMessage({ type: 'MOUSE_BUTTON', button: 2, action: 'UP' });
+                }
+            });
+
+            trackpad.addEventListener('contextmenu', (e) => e.preventDefault());
+
+            // Trackpad buttons (ESC, ENTER, SPACE)
+            document.querySelectorAll('.trackpad-btn').forEach(btn => {
+                // Mouse buttons (L, R)
+                if (btn.classList.contains('mouse-btn')) {
+                    const button = parseInt(btn.dataset.button);
+                    btn.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        console.log('Mouse button', button, 'DOWN');
+                        sendMessage({
+                            type: 'MOUSE_BUTTON',
+                            button: button,
+                            action: 'DOWN'
+                        });
+                    });
+                    
+                    btn.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        console.log('Mouse button', button, 'UP');
+                        sendMessage({
+                            type: 'MOUSE_BUTTON',
+                            button: button,
+                            action: 'UP'
+                        });
+                    });
+                } else {
+                    // Keyboard buttons (ESC, ENTER, SPACE)
+                    btn.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        const key = btn.dataset.key;
+                        console.log('Trackpad key', key, 'DOWN');
+                        sendMessage({
+                            type: 'KEY',
+                            code: keyMap[key],
+                            action: 'DOWN'
+                        });
+                    });
+                    
+                    btn.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        const key = btn.dataset.key;
+                        console.log('Trackpad key', key, 'UP');
+                        sendMessage({
+                            type: 'KEY',
+                            code: keyMap[key],
+                            action: 'UP'
+                        });
+                    });
+                }
+            });
+        }
+
+        // Setup Keyboard
+        function setupKeyboard() {
+            console.log('Setting up keyboard...');
+            const keys = document.querySelectorAll('#mode-keyboard .key');
+            console.log('Found', keys.length, 'keyboard keys');
+            
+            keys.forEach(key => {
+                const keyName = key.dataset.key;
+                console.log('Setting up key:', keyName);
+                
+                // Handle key press (works for both touch and click)
+                const handleKeyDown = (e) => {
+                    e.preventDefault();
+                    console.log('Key DOWN event:', keyName);
+                    
+                    // Handle CAPS lock toggle
+                    if (keyName === 'CAPS') {
+                        capsLockOn = !capsLockOn;
+                        console.log('Caps lock toggled:', capsLockOn);
+                        updateKeyboardCase();
+                        key.classList.toggle('active', capsLockOn);
+                    }
+                    
+                    console.log('Sending KEY message:', keyName, 'code:', keyMap[keyName]);
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[keyName],
+                        action: 'DOWN'
+                    });
+                };
+                
+                const handleKeyUp = (e) => {
+                    e.preventDefault();
+                    console.log('Key UP event:', keyName);
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[keyName],
+                        action: 'UP'
+                    });
+                };
+                
+                // Add both touch and click events
+                key.addEventListener('touchstart', handleKeyDown);
+                key.addEventListener('touchend', handleKeyUp);
+                key.addEventListener('mousedown', handleKeyDown);
+                key.addEventListener('mouseup', handleKeyUp);
+            });
+            
+            console.log('Keyboard setup complete');
+        }
+        
+        // Update keyboard letter case based on caps lock
+        function updateKeyboardCase() {
+            console.log('Updating keyboard case, capsLock:', capsLockOn);
+            document.querySelectorAll('#mode-keyboard .key[data-key]').forEach(key => {
+                const keyName = key.dataset.key;
+                // Only update single letter keys (A-Z)
+                if (keyName.length === 1 && /^[A-Z]$/.test(keyName)) {
+                    const newText = capsLockOn ? keyName.toUpperCase() : keyName.toLowerCase();
+                    console.log('Key', keyName, 'changing to:', newText);
+                    key.textContent = newText;
+                }
+            });
+        }
+
+        // Setup Gamepad
+        function setupGamepad() {
+            // Config button
+            document.getElementById('gamepad-config-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                openConfig();
+            });
+
+            // D-Pad
+            document.querySelectorAll('.dpad-btn').forEach(btn => {
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const dir = btn.dataset.dir;
+                    const key = getDPadKey(dir);
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[key],
+                        action: 'DOWN'
+                    });
+                });
+                
+                btn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    const dir = btn.dataset.dir;
+                    const key = getDPadKey(dir);
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[key],
+                        action: 'UP'
+                    });
+                });
+            });
+
+            // Action Buttons
+            document.querySelectorAll('.action-btn').forEach(btn => {
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const btnName = btn.dataset.btn;
+                    const key = getActionButtonKey(btnName);
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[key],
+                        action: 'DOWN'
+                    });
+                });
+                
+                btn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    const btnName = btn.dataset.btn;
+                    const key = getActionButtonKey(btnName);
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[key],
+                        action: 'UP'
+                    });
+                });
+            });
+
+            // Config toggles
+            document.getElementById('dpad-mode-toggle').addEventListener('click', () => {
+                gamepadConfig.dpadMode = gamepadConfig.dpadMode === 'arrows' ? 'wasd' : 'arrows';
+                saveConfig();
+                updateConfigUI();
+            });
+
+            // Button config click handlers
+            const keyOptions = ['ENTER', 'SPACE', 'CTRL', 'SHIFT', 'ESC', 'Q', 'E', 'R', 'F', 'Z', 'X', 'C'];
+            
+            document.getElementById('btn-a-config').addEventListener('click', () => {
+                const config = currentConfigMode === 'gamepad' ? gamepadConfig : joystickConfig;
+                const currentIndex = keyOptions.indexOf(config.buttonA);
+                config.buttonA = keyOptions[(currentIndex + 1) % keyOptions.length];
+                saveConfig();
+                updateConfigUI();
+            });
+            
+            document.getElementById('btn-b-config').addEventListener('click', () => {
+                const config = currentConfigMode === 'gamepad' ? gamepadConfig : joystickConfig;
+                const currentIndex = keyOptions.indexOf(config.buttonB);
+                config.buttonB = keyOptions[(currentIndex + 1) % keyOptions.length];
+                saveConfig();
+                updateConfigUI();
+            });
+            
+            document.getElementById('btn-x-config').addEventListener('click', () => {
+                const config = currentConfigMode === 'gamepad' ? gamepadConfig : joystickConfig;
+                const currentIndex = keyOptions.indexOf(config.buttonX);
+                config.buttonX = keyOptions[(currentIndex + 1) % keyOptions.length];
+                saveConfig();
+                updateConfigUI();
+            });
+            
+            document.getElementById('btn-y-config').addEventListener('click', () => {
+                const config = currentConfigMode === 'gamepad' ? gamepadConfig : joystickConfig;
+                const currentIndex = keyOptions.indexOf(config.buttonY);
+                config.buttonY = keyOptions[(currentIndex + 1) % keyOptions.length];
+                saveConfig();
+                updateConfigUI();
+            });
+
+            document.getElementById('sensitivity-slider').addEventListener('input', (e) => {
+                const value = Math.max(1, Math.min(100, parseInt(e.target.value, 10) || 100));
+                if (currentConfigMode === 'joystick') {
+                    controllerSettings.joystickSensitivity = value;
+                } else {
+                    controllerSettings.trackpadSensitivity = value;
+                }
+                saveConfig();
+                updateConfigUI();
+            });
+        }
+
+        // Get D-Pad key based on mode
+        function getDPadKey(dir) {
+            if (gamepadConfig.dpadMode === 'arrows') {
+                return dir; // UP, DOWN, LEFT, RIGHT
+            } else {
+                const wasdMap = { UP: 'W', DOWN: 'S', LEFT: 'A', RIGHT: 'D' };
+                return wasdMap[dir];
+            }
+        }
+
+        // Get action button key
+        function getActionButtonKey(btn, mode = 'gamepad') {
+            const config = mode === 'gamepad' ? gamepadConfig : joystickConfig;
+            const map = {
+                A: config.buttonA,
+                B: config.buttonB,
+                X: config.buttonX,
+                Y: config.buttonY
+            };
+            return map[btn];
+        }
+
+        // Setup Joystick
+        function setupJoystick() {
+            const stick = document.getElementById('joystick-stick');
+            const area = document.getElementById('joystick-area');
+            const info = document.getElementById('joystick-info');
+            
+            let isDragging = false;
+            let centerX = 0, centerY = 0;
+            let maxRadius = 50; // Default fallback value
+            let lastSendTime = 0;
+            const THROTTLE_MS = 33; // ~30fps for joystick updates
+            
+            // Calculate max radius based on actual rendered size
+            function calculateMaxRadius() {
+                const rect = area.getBoundingClientRect();
+                const baseRect = document.getElementById('joystick-base').getBoundingClientRect();
+                const stickRect = stick.getBoundingClientRect();
+                
+                // Only update if we have valid dimensions
+                if (rect.width > 0 && baseRect.width > 0 && stickRect.width > 0) {
+                    const calculatedRadius = (baseRect.width - stickRect.width) / 2 * 0.8;
+                    if (calculatedRadius > 0) {
+                        maxRadius = calculatedRadius;
+                        console.log('Joystick maxRadius calculated:', maxRadius);
+                    }
+                }
+            }
+            
+            // Calculate on startup and window resize
+            calculateMaxRadius();
+            window.addEventListener('resize', calculateMaxRadius);
+            
+            function updateStickPosition(x, y) {
+                // Recalculate if maxRadius is still at default
+                if (maxRadius === 50) {
+                    calculateMaxRadius();
+                }
+                
+                const rect = area.getBoundingClientRect();
+                centerX = rect.width / 2;
+                centerY = rect.height / 2;
+                
+                // Calculate delta from center
+                let deltaX = x - centerX;
+                let deltaY = y - centerY;
+                
+                // Calculate distance from center
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                
+                // Constrain to maxRadius
+                if (distance > maxRadius) {
+                    const ratio = maxRadius / distance;
+                    deltaX *= ratio;
+                    deltaY *= ratio;
+                }
+                
+                // Update stick visual position
+                stick.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                
+                // Normalize to -1.0 to 1.0 range (with sensitivity scaling)
+                const rawNormX = (maxRadius > 0) ? (deltaX / maxRadius) : 0;
+                const rawNormY = (maxRadius > 0) ? (deltaY / maxRadius) : 0;
+                const sensitivityScale = controllerSettings.joystickSensitivity / 100;
+                const normX = rawNormX * sensitivityScale;
+                const normY = rawNormY * sensitivityScale;
+                
+                // Update info display
+                info.textContent = `X: ${normX.toFixed(2)}, Y: ${normY.toFixed(2)}`;
+                
+                // Send joystick position (throttled) with timestamp
+                const now = Date.now();
+                if (now - lastSendTime >= THROTTLE_MS) {
+                    sendMessage({
+                        type: 'JOYSTICK',
+                        x: normX,
+                        y: normY,
+                        timestamp: now
+                    });
+                    lastSendTime = now;
+                }
+            }
+            
+            function resetStick() {
+                stick.style.transform = 'translate(0, 0)';
+                info.textContent = 'Drag stick';
+                sendMessage({
+                    type: 'JOYSTICK',
+                    x: 0,
+                    y: 0,
+                    timestamp: Date.now()
+                });
+            }
+            
+            // Touch events for mobile
+            stick.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                console.log('Stick touchstart, maxRadius:', maxRadius);
+            });
+            
+            area.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                console.log('Area touchstart, maxRadius:', maxRadius);
+            });
+            
+            area.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                
+                const touch = e.touches[0];
+                const rect = area.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                
+                console.log('Touch move:', x, y, 'maxRadius:', maxRadius);
+                updateStickPosition(x, y);
+            });
+            
+            area.addEventListener('touchend', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                isDragging = false;
+                resetStick();
+            });
+            
+            // Mouse events for desktop testing
+            stick.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isDragging = true;
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                
+                const rect = area.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                updateStickPosition(x, y);
+            });
+            
+            document.addEventListener('mouseup', (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                isDragging = false;
+                resetStick();
+            });
+            
+            // Joystick config button
+            document.getElementById('joystick-config-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                openConfig('joystick');
+            });
+
+            // Action Buttons
+            document.querySelectorAll('.joystick-action-btn').forEach(btn => {
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const btnName = btn.dataset.btn;
+                    const key = getActionButtonKey(btnName, 'joystick');
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[key],
+                        action: 'DOWN'
+                    });
+                });
+                
+                btn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    const btnName = btn.dataset.btn;
+                    const key = getActionButtonKey(btnName, 'joystick');
+                    sendMessage({
+                        type: 'KEY',
+                        code: keyMap[key],
+                        action: 'UP'
+                    });
+                });
+            });
+        }
+
+        function setupPortraitControls() {
+            const bindMomentaryKey = (element, resolveKeyName) => {
+                if (!element) return;
+
+                const sendDown = (e) => {
+                    e.preventDefault();
+                    const keyName = resolveKeyName();
+                    if (!keyName || keyMap[keyName] == null) return;
+                    element.dataset.activeKey = keyName;
+                    sendMessage({ type: 'KEY', code: keyMap[keyName], action: 'DOWN' });
+                };
+
+                const sendUp = (e) => {
+                    e.preventDefault();
+                    const keyName = element.dataset.activeKey || resolveKeyName();
+                    if (!keyName || keyMap[keyName] == null) return;
+                    sendMessage({ type: 'KEY', code: keyMap[keyName], action: 'UP' });
+                    element.dataset.activeKey = '';
+                };
+
+                element.addEventListener('touchstart', sendDown, { passive: false });
+                element.addEventListener('touchend', sendUp, { passive: false });
+                element.addEventListener('touchcancel', sendUp, { passive: false });
+                element.addEventListener('mousedown', sendDown);
+                element.addEventListener('mouseup', sendUp);
+                element.addEventListener('mouseleave', sendUp);
+            };
+
+            const functionKeys = document.querySelectorAll('#portrait-layout .portrait-key[data-key]');
+            functionKeys.forEach((btn) => {
+                bindMomentaryKey(btn, () => btn.dataset.key);
+            });
+
+            const gamepadButtons = document.querySelectorAll('#portrait-gamepad [data-btn]');
+            gamepadButtons.forEach((btn) => {
+                bindMomentaryKey(btn, () => {
+                    const value = btn.dataset.btn;
+                    if (value === 'UP' || value === 'DOWN' || value === 'LEFT' || value === 'RIGHT') {
+                        return getDPadKey(value);
+                    }
+                    return getActionButtonKey(value, 'gamepad');
+                });
+            });
+
+            const input = document.getElementById('portrait-text-input');
+            const enterBtn = document.getElementById('portrait-enter-btn');
+            const sendBtn = document.getElementById('portrait-send-btn');
+            if (input && sendBtn) {
+                const submitTextLine = () => {
+                    const value = input.value;
+                    sendTextLine(value);
+                    input.value = '';
+                };
+
+                sendBtn.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    submitTextLine();
+                }, { passive: false });
+
+                sendBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    submitTextLine();
+                });
+
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submitTextLine();
+                    }
+                });
+
+                input.addEventListener('keyup', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submitTextLine();
+                    }
+                });
+            }
+
+            if (enterBtn) {
+                bindMomentaryKey(enterBtn, () => 'ENTER');
+            }
+        }
+
+        // Open config modal
+        function openConfig(mode = 'gamepad') {
+            currentConfigMode = mode;
+            document.getElementById('config-title').textContent =
+                mode === 'gamepad' ? 'Gamepad Configuration' :
+                mode === 'joystick' ? 'Joystick Configuration' :
+                'Trackpad Settings';
+
+            const isGamepad = mode === 'gamepad';
+            const isJoystick = mode === 'joystick';
+            const isTrackpad = mode === 'trackpad';
+
+            document.getElementById('config-dpad-row').style.display = isGamepad ? 'flex' : 'none';
+            document.getElementById('config-sensitivity-row').style.display = (isTrackpad || isJoystick) ? 'flex' : 'none';
+            document.getElementById('config-btn-a-row').style.display = (isGamepad || isJoystick) ? 'flex' : 'none';
+            document.getElementById('config-btn-b-row').style.display = (isGamepad || isJoystick) ? 'flex' : 'none';
+            document.getElementById('config-btn-x-row').style.display = (isGamepad || isJoystick) ? 'flex' : 'none';
+            document.getElementById('config-btn-y-row').style.display = (isGamepad || isJoystick) ? 'flex' : 'none';
+
+            updateConfigUI();
+            document.getElementById('config-modal').classList.add('active');
+        }
+
+        // Close config modal
+        function closeConfig() {
+            document.getElementById('config-modal').classList.remove('active');
+        }
+
+        // Update config UI
+        function updateConfigUI() {
+            const config = currentConfigMode === 'gamepad' ? gamepadConfig : joystickConfig;
+            const activeSensitivity = currentConfigMode === 'joystick'
+                ? controllerSettings.joystickSensitivity
+                : controllerSettings.trackpadSensitivity;
+            const sensitivity = Math.max(1, Math.min(100, activeSensitivity));
+            
+            document.getElementById('dpad-mode-toggle').textContent = 
+                gamepadConfig.dpadMode === 'arrows' ? 'Arrow Keys' : 'WASD';
+            const modalSlider = document.getElementById('sensitivity-slider');
+            const modalValue = document.getElementById('sensitivity-value');
+            if (modalSlider) modalSlider.value = String(sensitivity);
+            if (modalValue) modalValue.textContent = `${sensitivity}%`;
+            document.getElementById('btn-a-config').textContent = 
+                config.buttonA.charAt(0) + config.buttonA.slice(1).toLowerCase();
+            document.getElementById('btn-b-config').textContent = 
+                config.buttonB.charAt(0) + config.buttonB.slice(1).toLowerCase();
+            document.getElementById('btn-x-config').textContent = 
+                config.buttonX.charAt(0) + config.buttonX.slice(1).toLowerCase();
+            document.getElementById('btn-y-config').textContent = 
+                config.buttonY.charAt(0) + config.buttonY.slice(1).toLowerCase();
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>
