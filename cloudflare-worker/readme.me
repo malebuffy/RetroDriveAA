@@ -1,0 +1,127 @@
+RetroDriveAA Cloudflare Worker Setup
+
+Purpose
+- This worker is only for the phone controller WebSocket relay.
+- It does not handle game uploads.
+- The Android app connects as role=car.
+- The phone controller page connects as role=phone.
+
+Project Files
+- wrangler.toml: Worker and Durable Object binding configuration.
+- src/index.js: WebSocket entrypoint and Durable Object room logic.
+- README.md: Short existing overview.
+- readme.me: This detailed deployment and integration guide.
+
+How The Controller Path Works
+- The app opens a WebSocket to /ws?session=<id>&role=car.
+- The hosted phone controller page opens a WebSocket to /ws?session=<id>&role=phone.
+- The Worker routes both connections into the same Durable Object room using the session id.
+- The Durable Object forwards frames between the car and phone sockets.
+- If a newer socket connects for the same role, the older socket is replaced.
+
+What The Worker Does Not Do
+- No DOS game upload handling.
+- No PHP relay endpoints.
+- No file storage.
+- No authentication beyond the session id.
+
+Prerequisites
+- Node.js LTS installed.
+- A Cloudflare account.
+- Wrangler available through npm.
+
+Install And Login
+1. Open a terminal in cloudflare-worker.
+2. Run npm install.
+3. Run npx wrangler login.
+
+Wrangler Configuration
+- Current worker name is retrodrive-ws-relay.
+- Durable Object binding name is RELAY.
+- Durable Object class name is RelayRoom.
+- Current compatibility date is set in wrangler.toml.
+
+If you rename the Durable Object class or binding, update both:
+- wrangler.toml
+- src/index.js
+
+Deploy
+1. In cloudflare-worker run npx wrangler deploy.
+2. After deploy, note the Worker URL, for example:
+   wss://retrodrive-ws-relay.<your-subdomain>.workers.dev/ws
+
+Verify The Worker
+1. Open the root URL in a browser.
+2. It should return:
+   retrodrive relay online
+3. Open a WebSocket client on two terminals.
+
+Example test with wscat
+Terminal A
+  npx wscat -c "wss://<your-worker>.workers.dev/ws?session=test&role=car"
+
+Terminal B
+  npx wscat -c "wss://<your-worker>.workers.dev/ws?session=test&role=phone"
+
+If you send a message in one terminal, it should appear in the other.
+
+Phone Controller Page
+- The Worker only relays WebSockets.
+- The HTML controller UI is hosted separately.
+- The app currently points at a hosted controller page through CONTROLLER_WEB_BASE_URL.
+- That page expects these query parameters:
+  session=<generated-session-id>
+  ws=<base-worker-websocket-url>
+
+The page then builds:
+- <ws>?session=<id>&role=phone
+
+Android App Integration
+Update these fields in app/build.gradle.kts after deployment if your URLs change:
+- CONTROLLER_WS_BASE_URL
+- CONTROLLER_WEB_BASE_URL
+
+Current examples in the app:
+- CONTROLLER_WS_BASE_URL = wss://retrodrive.antoniadis.workers.dev/ws
+- CONTROLLER_WEB_BASE_URL = https://retrodrive.code-odyssey.com/controller.html
+
+Expected Runtime Flow
+1. The DOS session starts the controller server in the app.
+2. The app generates a session id.
+3. The app shows a QR code pointing to the hosted controller page.
+4. The user opens the page on the phone.
+5. The car connects to the Worker as role=car.
+6. The phone connects to the Worker as role=phone.
+7. Input frames are relayed through the Durable Object room.
+
+Common Problems
+- 426 Expected WebSocket:
+  The client hit /ws without a WebSocket upgrade request.
+
+- 400 Missing session or role:
+  The request URL is missing query parameters.
+
+- 400 Invalid role:
+  Only phone and car are accepted.
+
+- QR page loads but controller does not connect:
+  Check that CONTROLLER_WEB_BASE_URL is reachable from the phone.
+  Check that the page passes ws and session into the WebSocket URL.
+  Check that the Worker URL ends with /ws.
+
+- Connection loops or replacements:
+  The same role is connecting multiple times for one session.
+  The Worker intentionally replaces the older socket.
+
+Security Notes
+- Session ids are not authentication.
+- Anyone with a valid session id can attempt to connect.
+- For production hardening, add a signed token or short-lived auth layer.
+- Consider origin validation and rate limiting at the Worker layer.
+
+Useful Files To Review
+- cloudflare-worker/src/index.js
+- cloudflare-worker/wrangler.toml
+- app/src/main/java/com/dosbox/emu/WifiControllerServer.java
+- app/src/main/assets/www/controller.html
+- app/build.gradle.kts
