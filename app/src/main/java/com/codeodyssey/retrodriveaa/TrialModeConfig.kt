@@ -14,7 +14,6 @@ object TrialModeConfig {
     private const val KEY_PURCHASED = "purchased"
     private const val KEY_PURCHASED_FORCED_BY_TRIAL_DISABLED = "purchased_forced_by_trial_disabled"
     private const val KEY_HAS_DISMISSED_TRIAL = "has_dismissed_trial"
-    private const val KEY_TRIAL_WIFI_UPLOAD_USED = "trial_wifi_upload_used"
 
     fun ensureTrialStateInitialized(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -22,7 +21,6 @@ object TrialModeConfig {
             .putBoolean(KEY_PURCHASED, true)
             .putBoolean(KEY_PURCHASED_FORCED_BY_TRIAL_DISABLED, true)
             .remove(KEY_HAS_DISMISSED_TRIAL)
-            .remove(KEY_TRIAL_WIFI_UPLOAD_USED)
             .apply()
     }
 
@@ -45,17 +43,6 @@ object TrialModeConfig {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_HAS_DISMISSED_TRIAL)
-            .apply()
-    }
-
-    fun isWifiUploadAllowed(context: Context): Boolean {
-        return true
-    }
-
-    fun markTrialWifiUploadSuccess(context: Context) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove(KEY_TRIAL_WIFI_UPLOAD_USED)
             .apply()
     }
 }

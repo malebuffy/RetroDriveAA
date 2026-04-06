@@ -25,7 +25,6 @@ val releaseStoreFilePath = signingValue("RETRODRIVE_RELEASE_STORE_FILE")
 val releaseKeyAlias = signingValue("RETRODRIVE_RELEASE_KEY_ALIAS") ?: "key0"
 val releaseStorePassword = signingValue("RETRODRIVE_RELEASE_STORE_PASSWORD")
 val releaseKeyPassword = signingValue("RETRODRIVE_RELEASE_KEY_PASSWORD")
-val relayInitKey = signingValue("RETRODRIVE_RELAY_INIT_KEY") ?: "CHANGE_ME_RELAY_INIT_KEY"
 val hasReleaseSigning =
     !releaseStoreFilePath.isNullOrBlank() &&
         !releaseStorePassword.isNullOrBlank() &&
@@ -57,10 +56,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // PHP relay host (set this to your deployed free webhost folder URL)
-        buildConfigField("String", "RELAY_BASE_URL", "\"https://retrodrive.code-odyssey.com\"")
-        buildConfigField("String", "WIFI_UPLOAD_BASE_URL", "\"https://retrodrive.code-odyssey.com\"")
-        buildConfigField("String", "RELAY_INIT_KEY", "\"$relayInitKey\"")
         buildConfigField("String", "CONTROLLER_WS_BASE_URL", "\"wss://retrodrive.antoniadis.workers.dev/ws\"")
         buildConfigField("String", "CONTROLLER_WEB_BASE_URL", "\"https://retrodrive.code-odyssey.com/controller.html\"")
 

@@ -6,7 +6,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
@@ -27,7 +26,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -44,18 +42,10 @@ import com.codeodyssey.retrodriveaa.BuildConfig
 import com.codeodyssey.retrodriveaa.projection.auto.RetroDriveProjectedNavigation
 import com.codeodyssey.retrodriveaa.ui.theme.AppThemeMode
 import com.codeodyssey.retrodriveaa.ui.theme.RetroDriveTheme
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.WriterException
-import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
-import java.util.UUID
 
 /**
  * RetroDriveCarLauncher: Automotive Safety Gate
@@ -375,8 +365,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
         private const val PERMISSION_REQUEST_CODE = 100
         private const val DEVICE_UPLOAD_REQUEST_CODE = 101
         private const val PARKED_CHECK_INTERVAL_MS = 2000L // Check every 2 seconds
-        private const val RELAY_POLL_INTERVAL_MS = 2500L
-        private const val RELAY_HTTP_TIMEOUT_SECONDS = 300L
         private const val UI_PREFS_NAME = "retrodrive_ui_prefs"
         private const val KEY_FONT_SCALE = "font_scale"
         private const val KEY_THEME_MODE = "theme_mode"
@@ -419,19 +407,8 @@ open class RetroDriveCarLauncher : ComponentActivity() {
         }
     }
 
-    private data class RelaySession(
-        val transferId: String,
-        val token: String,
-        val initUrl: String,
-        val uploadUrl: String,
-        val statusUrl: String,
-        val downloadUrl: String
-    )
-
     private var isCheckingParkedState by mutableStateOf(false)
     private var isDriving by mutableStateOf(true) // Default to safe (locked) state
-    private var wifiServer: WifiTransferServer? = null
-    private var isServerRunning by mutableStateOf(false)
     private var isPurchased by mutableStateOf(true)
     private var uiFontScale by mutableStateOf(1.0f)
     private var appThemeMode by mutableStateOf(AppThemeMode.LIGHT)
@@ -448,26 +425,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
     private var libraryRefreshSignal by mutableStateOf(0)
     protected open val allowNonCarDevice: Boolean = true
     protected open val bypassSafetyGate: Boolean = false
-    private val relayHttpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(RELAY_HTTP_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(RELAY_HTTP_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(RELAY_HTTP_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
-            .build()
-    }
-
-    private fun createRelaySession(baseUrl: String): RelaySession {
-        val transferId = UUID.randomUUID().toString().replace("-", "")
-        val token = (UUID.randomUUID().toString() + UUID.randomUUID().toString()).replace("-", "")
-        return RelaySession(
-            transferId = transferId,
-            token = token,
-            initUrl = "$baseUrl/init.php?id=$transferId&token=$token",
-            uploadUrl = "$baseUrl/upload.php?id=$transferId&token=$token",
-            statusUrl = "$baseUrl/status.php?id=$transferId&token=$token",
-            downloadUrl = "$baseUrl/download.php?id=$transferId&token=$token"
-        )
-    }
     
     /**
      * Get list of game folders from the game directory
@@ -592,18 +549,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
         // Check and request permissions
         checkPermissions()
 
-        // Initialize WiFi server
-        wifiServer = WifiTransferServer(this, 8080)
-        // Set static reference for DOSBoxActivity to allow stopping from anywhere
-        try {
-            val dosBoxActivityClass = Class.forName("com.dosbox.emu.DOSBoxActivity")
-            val field = dosBoxActivityClass.getField("wifiTransferServerInstance")
-            field.set(null, wifiServer)
-            android.util.Log.i("RetroDriveCarLauncher", "Set wifiTransferServerInstance reference")
-        } catch (e: Exception) {
-            android.util.Log.e("RetroDriveCarLauncher", "Failed to set wifiTransferServerInstance: ${e.message}", e)
-        }
-
         uiFontScale = loadUiFontScale()
         appThemeMode = loadAppThemeMode()
 
@@ -643,12 +588,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
         }
     }
     
-    override fun onDestroy() {
-        super.onDestroy()
-        // Stop WiFi server when activity is destroyed
-        wifiServer?.stop()
-    }
-
     private fun initializeTrialGate() {
         if (!TrialModeConfig.TRIAL_MODE_ENABLED || isPurchased) {
             showTrialOverlay = false
@@ -688,7 +627,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
         val buttonStyle = themedButtonStyle()
         val mainMenuTextColor = if (appThemeMode == AppThemeMode.LIGHT) Color.White else MaterialTheme.colorScheme.onBackground
 
-        // Refresh game list when demo install completes
         LaunchedEffect(libraryRefreshSignal) {
             if (libraryRefreshSignal > 0) gameFolders = getGameFolders()
         }
@@ -696,7 +634,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
         LaunchedEffect(pendingProjectedSection) {
             when (pendingProjectedSection) {
                 RetroDriveProjectedNavigation.SECTION_TRANSFER -> launchDeviceUpload()
-
                 RetroDriveProjectedNavigation.SECTION_SETTINGS -> showUiSettings = true
                 RetroDriveProjectedNavigation.SECTION_ABOUT -> showAbout = true
             }
@@ -745,19 +682,17 @@ open class RetroDriveCarLauncher : ComponentActivity() {
             ) {
                 val maxH = maxHeight
                 val maxW = maxWidth
-                // Shrink content if height is limited
                 val scaleRaw = (maxH.value / 700f).coerceAtMost(maxW.value / 400f)
-                val scale = scaleRaw.coerceIn(0.6f, 1f) // Clamp to avoid too-large text on ultra-wide/short screens
-                // Compact vertical chrome when font grows; don't enlarge spacing for small/normal
+                val scale = scaleRaw.coerceIn(0.6f, 1f)
                 val compactFactor = (1f / uiFontScale).coerceIn(0.78f, 1f)
-                val gSmall  = ((12f * scale) * compactFactor).coerceAtLeast(1f).dp
-                val gMid    = ((16f * scale) * compactFactor).coerceAtLeast(1f).dp
-                val gLarge  = ((24f * scale) * compactFactor).coerceAtLeast(1f).dp
+                val gSmall = ((12f * scale) * compactFactor).coerceAtLeast(1f).dp
+                val gMid = ((16f * scale) * compactFactor).coerceAtLeast(1f).dp
+                val gLarge = ((24f * scale) * compactFactor).coerceAtLeast(1f).dp
                 val gXLarge = ((32f * scale) * compactFactor).coerceAtLeast(1f).dp
-                val colPad  = ((24f * scale) * compactFactor).coerceIn(2f, 24f * scale).dp
+                val colPad = ((24f * scale) * compactFactor).coerceIn(2f, 24f * scale).dp
                 val mainButtonMinHeight = ((56f * scale) * compactFactor).coerceAtLeast(40f * scale).dp
-                // Emoji uses dp-equivalent size so it doesn't compound with fontScale
                 val emojiSizeSp = with(androidx.compose.ui.platform.LocalDensity.current) { (56 * scale).dp.toSp() }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -766,196 +701,185 @@ open class RetroDriveCarLauncher : ComponentActivity() {
                         .padding(colPad),
                     contentAlignment = Alignment.Center
                 ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (isDriving) {
-                        // DRIVING MODE: Safety Lock Screen
-                        Text(
-                            text = "🔒",
-                            fontSize = emojiSizeSp,
-                            color = Color.White
-                        )
-                        Spacer(modifier = Modifier.height(gLarge))
-                        Text(
-                            text = "RetrodriveAA Locked",
-                            fontSize = (32 * scale).sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(gMid))
-                        Text(
-                            text = "For your safety, DOS games are only available when parked.",
-                            fontSize = (18 * scale).sp,
-                            color = Color.White.copy(alpha = 0.9f),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(gXLarge))
-                        if (isCheckingParkedState) {
-                            CircularProgressIndicator(color = Color.White)
-                            Spacer(modifier = Modifier.height(gMid))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (isDriving) {
                             Text(
-                                text = "Checking vehicle status...",
-                                fontSize = (14 * scale).sp,
-                                color = Color.White.copy(alpha = 0.7f)
+                                text = "🔒",
+                                fontSize = emojiSizeSp,
+                                color = Color.White
                             )
-                        }
-                    } else {
-                        // PARKED MODE: Ready to launch
-                        Text(
-                            text = "🎮",
-                            fontSize = emojiSizeSp,
-                            color = mainMenuTextColor
-                        )
-                        Spacer(modifier = Modifier.height(gLarge))
-                        Text(
-                            text = if (useAutoMessaging) "RetrodriveAA Ready" else "RetrodriveAA",
-                            fontSize = (32 * scale).sp,
-                            fontWeight = FontWeight.Bold,
-                            color = mainMenuTextColor,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(gMid))
-                        Text(
-                            text = if (useAutoMessaging) {
-                                "Vehicle is parked. Safe to play!"
-                            } else {
-                                "Phone mode uses the same RetrodriveAA library and settings as Android Auto."
-                            },
-                            fontSize = (18 * scale).sp,
-                            color = mainMenuTextColor.copy(alpha = 0.9f),
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(gXLarge))
-
-                        // Game Selection Section
-                        if (gameFolders.isNotEmpty()) {
-                            // Game dropdown selector
-                            GameDropdownSelector(
-                                gameFolders = gameFolders,
-                                onGameSelected = { gameFolder -> launchDOSBox(gameFolder) },
-                                onGameConfigured = { gameFolder ->
-                                    selectedGameForConfig = gameFolder
-                                    showGameConfig = true
-                                },
-                                onGameDeleted = {
-                                    // Refresh game folder list after deletion
-                                    gameFolders = getGameFolders()
-                                },
-                                scale = scale
-                            )
-                            Spacer(modifier = Modifier.height(gMid))
-                        }
-
-
-                        // Launch DOSBox Button (browse mode)
-                        Button(
-                            onClick = { launchDOSBox() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = buttonStyle.containerColor,
-                                contentColor = buttonStyle.contentColor
-                            ),
-                            border = buttonStyle.border,
-                            modifier = Modifier
-                                .fillMaxWidth(0.5f)
-                                .heightIn(min = mainButtonMinHeight)
-                        ) {
+                            Spacer(modifier = Modifier.height(gLarge))
                             Text(
-                                text = if (gameFolders.isEmpty()) "Launch DOS Games" else "Enter DOS",
-                                fontSize = (18 * scale).sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(gMid))
-
-                        // WiFi Transfer Button (identical layout)
-                        Button(
-                            onClick = { launchDeviceUpload() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = buttonStyle.containerColor,
-                                contentColor = buttonStyle.contentColor
-                            ),
-                            border = buttonStyle.border,
-                            modifier = Modifier
-                                .fillMaxWidth(0.5f)
-                                .heightIn(min = mainButtonMinHeight)
-                        ) {
-                            Text(
-                                text = "Upload from Device",
-                                fontSize = (18 * scale).sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(gMid))
-
-                        Button(
-                            onClick = { showUiSettings = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = buttonStyle.containerColor,
-                                contentColor = buttonStyle.contentColor
-                            ),
-                            border = buttonStyle.border,
-                            modifier = Modifier
-                                .fillMaxWidth(0.5f)
-                                .heightIn(min = mainButtonMinHeight)
-                        ) {
-                            Text(
-                                text = "UI Settings",
-                                fontSize = (18 * scale).sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(gMid))
-
-                        // About Button (always last)
-                        Button(
-                            onClick = { showAbout = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = buttonStyle.containerColor,
-                                contentColor = buttonStyle.contentColor
-                            ),
-                            border = buttonStyle.border,
-                            modifier = Modifier
-                                .fillMaxWidth(0.5f)
-                                .heightIn(min = mainButtonMinHeight)
-                        ) {
-                            Text(
-                                text = "About",
-                                fontSize = (18 * scale).sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        if (gameFolders.isEmpty()) {
-                            Spacer(modifier = Modifier.height(gSmall))
-                            Text(
-                                text = "No games found. Upload a ZIP from this device.",
-                                fontSize = (14 * scale).sp,
-                                color = mainMenuTextColor.copy(alpha = 0.7f),
+                                text = "RetrodriveAA Locked",
+                                fontSize = (32 * scale).sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
                                 textAlign = TextAlign.Center
                             )
-                        }
-                        
-                        // Legal Disclaimer
-                        Spacer(modifier = Modifier.height(gLarge))
-                        Text(
-                            text = "LEGAL NOTICE: This application does not include any games. Users are solely responsible for ensuring they have the legal right to use any software they run. Only use games you own or have permission to play.",
-                            fontSize = (12 * scale).sp,
-                            color = mainMenuTextColor.copy(alpha = 0.5f),
-                            textAlign = TextAlign.Center,
-                            lineHeight = (14 * scale).sp,
-                            modifier = Modifier.fillMaxWidth(0.6f)
-                        )
-                    }  // else
-                }  // inner Column
-                }  // Box
-            }  // BoxWithConstraints
+                            Spacer(modifier = Modifier.height(gMid))
+                            Text(
+                                text = "For your safety, DOS games are only available when parked.",
+                                fontSize = (18 * scale).sp,
+                                color = Color.White.copy(alpha = 0.9f),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(gXLarge))
+                            if (isCheckingParkedState) {
+                                CircularProgressIndicator(color = Color.White)
+                                Spacer(modifier = Modifier.height(gMid))
+                                Text(
+                                    text = "Checking vehicle status...",
+                                    fontSize = (14 * scale).sp,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "🎮",
+                                fontSize = emojiSizeSp,
+                                color = mainMenuTextColor
+                            )
+                            Spacer(modifier = Modifier.height(gLarge))
+                            Text(
+                                text = if (useAutoMessaging) "RetrodriveAA Ready" else "RetrodriveAA",
+                                fontSize = (32 * scale).sp,
+                                fontWeight = FontWeight.Bold,
+                                color = mainMenuTextColor,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(gMid))
+                            Text(
+                                text = if (useAutoMessaging) {
+                                    "Vehicle is parked. Safe to play!"
+                                } else {
+                                    "Phone mode uses the same RetrodriveAA library and settings as Android Auto."
+                                },
+                                fontSize = (18 * scale).sp,
+                                color = mainMenuTextColor.copy(alpha = 0.9f),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(gXLarge))
 
-            // About Dialog (if requested)
+                            if (gameFolders.isNotEmpty()) {
+                                GameDropdownSelector(
+                                    gameFolders = gameFolders,
+                                    onGameSelected = { gameFolder -> launchDOSBox(gameFolder) },
+                                    onGameConfigured = { gameFolder ->
+                                        selectedGameForConfig = gameFolder
+                                        showGameConfig = true
+                                    },
+                                    onGameDeleted = {
+                                        gameFolders = getGameFolders()
+                                    },
+                                    scale = scale
+                                )
+                                Spacer(modifier = Modifier.height(gMid))
+                            }
+
+                            Button(
+                                onClick = { launchDOSBox() },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = buttonStyle.containerColor,
+                                    contentColor = buttonStyle.contentColor
+                                ),
+                                border = buttonStyle.border,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .heightIn(min = mainButtonMinHeight)
+                            ) {
+                                Text(
+                                    text = if (gameFolders.isEmpty()) "Launch DOS Games" else "Enter DOS",
+                                    fontSize = (18 * scale).sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(gMid))
+
+                            Button(
+                                onClick = { launchDeviceUpload() },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = buttonStyle.containerColor,
+                                    contentColor = buttonStyle.contentColor
+                                ),
+                                border = buttonStyle.border,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .heightIn(min = mainButtonMinHeight)
+                            ) {
+                                Text(
+                                    text = "Upload from Device",
+                                    fontSize = (18 * scale).sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(gMid))
+
+                            Button(
+                                onClick = { showUiSettings = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = buttonStyle.containerColor,
+                                    contentColor = buttonStyle.contentColor
+                                ),
+                                border = buttonStyle.border,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .heightIn(min = mainButtonMinHeight)
+                            ) {
+                                Text(
+                                    text = "UI Settings",
+                                    fontSize = (18 * scale).sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(gMid))
+
+                            Button(
+                                onClick = { showAbout = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = buttonStyle.containerColor,
+                                    contentColor = buttonStyle.contentColor
+                                ),
+                                border = buttonStyle.border,
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .heightIn(min = mainButtonMinHeight)
+                            ) {
+                                Text(
+                                    text = "About",
+                                    fontSize = (18 * scale).sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            if (gameFolders.isEmpty()) {
+                                Spacer(modifier = Modifier.height(gSmall))
+                                Text(
+                                    text = "No games found. Upload a ZIP from this device.",
+                                    fontSize = (14 * scale).sp,
+                                    color = mainMenuTextColor.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(gLarge))
+                            Text(
+                                text = "LEGAL NOTICE: This application does not include any games. Users are solely responsible for ensuring they have the legal right to use any software they run. Only use games you own or have permission to play.",
+                                fontSize = (12 * scale).sp,
+                                color = mainMenuTextColor.copy(alpha = 0.5f),
+                                textAlign = TextAlign.Center,
+                                lineHeight = (14 * scale).sp,
+                                modifier = Modifier.fillMaxWidth(0.6f)
+                            )
+                        }
+                    }
+                }
+            }
+
             if (showAbout) {
                 AboutDialog(
                     onDismiss = { showAbout = false }
@@ -968,7 +892,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
                 )
             }
 
-            // Game Config Dialog (if requested)
             if (showGameConfig && selectedGameForConfig != null) {
                 GameConfigDialog(
                     gameId = selectedGameForConfig!!,
@@ -976,354 +899,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
                     onSaved = { showGameConfig = false }
                 )
             }
-        }
-    }
-    
-    @Composable
-    fun WifiServerDialog(onDismiss: () -> Unit) {
-        val dColors = themedDialogColors()
-        // Auto-start server when dialog opens
-        LaunchedEffect(Unit) {
-            if (!isServerRunning) {
-                wifiServer?.start()
-                isServerRunning = true
-            }
-        }
-
-        val relayBaseUrl = remember {
-            BuildConfig.WIFI_UPLOAD_BASE_URL
-                .trim()
-                .trimEnd('/')
-                .ifBlank { BuildConfig.RELAY_BASE_URL.trim().trimEnd('/') }
-        }
-        val relayConfigured = remember(relayBaseUrl) {
-            relayBaseUrl.isNotBlank() &&
-                relayBaseUrl.startsWith("http") &&
-                !relayBaseUrl.contains("your-free-php-host.example.com")
-        }
-        val relaySession = remember(relayConfigured, relayBaseUrl) {
-            if (relayConfigured) createRelaySession(relayBaseUrl) else null
-        }
-        var relayStatusText by remember(relaySession?.transferId) {
-            mutableStateOf(
-                if (relaySession != null) {
-                    "Waiting for upload on relay page..."
-                } else {
-                    "Relay is not configured. WIFI_UPLOAD_BASE_URL='$relayBaseUrl'"
-                }
-            )
-        }
-        var relayImported by remember(relaySession?.transferId) { mutableStateOf(false) }
-
-        var reachableIps by remember { mutableStateOf(wifiServer?.getReachableIps() ?: listOf("0.0.0.0")) }
-
-        LaunchedEffect(isServerRunning) {
-            if (isServerRunning) {
-                while (true) {
-                    reachableIps = wifiServer?.getReachableIps() ?: listOf("0.0.0.0")
-                    delay(1500)
-                }
-            }
-        }
-
-        LaunchedEffect(isServerRunning, relaySession?.transferId) {
-            if (!isServerRunning || relaySession == null) return@LaunchedEffect
-
-            val initialized = initializeRelaySession(relaySession.initUrl, BuildConfig.RELAY_INIT_KEY)
-            if (!initialized) {
-                relayStatusText = "Relay session initialization failed."
-                return@LaunchedEffect
-            }
-
-            while (!relayImported) {
-                val status = fetchRelayStatus(relaySession.statusUrl)
-                if (status != null) {
-                    val (state, filename) = status
-                    when (state) {
-                        "ready" -> {
-                            relayStatusText = "File detected on relay. Downloading to car..."
-                            val importResult = downloadAndImportFromRelay(
-                                downloadUrl = relaySession.downloadUrl,
-                                fallbackFilename = filename
-                            )
-                            relayStatusText = importResult.message
-                            if (importResult.success) {
-                                relayImported = true
-                                Toast.makeText(
-                                    this@RetroDriveCarLauncher,
-                                    "Relay transfer complete",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                wifiServer?.stop()
-                                isServerRunning = false
-                                onDismiss()
-                                return@LaunchedEffect
-                            } else {
-                                relayImported = true
-                                Toast.makeText(
-                                    this@RetroDriveCarLauncher,
-                                    importResult.message,
-                                    Toast.LENGTH_LONG
-                                ).show()
-                                wifiServer?.stop()
-                                isServerRunning = false
-                                onDismiss()
-                                return@LaunchedEffect
-                            }
-                        }
-
-                        "uploading" -> relayStatusText = "Upload in progress..."
-                        "consumed" -> relayStatusText = "Transfer already consumed. Start a new session."
-                        "waiting" -> relayStatusText = "Waiting for upload on relay page..."
-                        else -> relayStatusText = "Relay status: $state"
-                    }
-                } else {
-                    relayStatusText = "Unable to reach relay status endpoint."
-                }
-                delay(RELAY_POLL_INTERVAL_MS)
-            }
-        }
-        
-        val serverIp = reachableIps.firstOrNull() ?: "0.0.0.0"
-        val serverPort = remember { wifiServer?.getPort() ?: 8080 }
-        val isEmulator = serverIp == "emulator" || serverIp == "localhost"
-        val isLikelyLanReachable = remember(serverIp) {
-            wifiServer?.isLikelyLanReachableIp(serverIp) ?: false
-        }
-        val serverUrl = if (isEmulator) {
-            "localhost:$serverPort (use adb forward)"
-        } else {
-            "http://$serverIp:$serverPort"
-        }
-        val relayUploadUrl = relaySession?.uploadUrl
-        val qrTargetUrl = relayUploadUrl ?: if (isEmulator) "http://localhost:$serverPort" else serverUrl
-        
-        // Generate QR code bitmap
-        val qrBitmap = remember(qrTargetUrl, isServerRunning) {
-            if (isServerRunning) {
-                generateQRCode(qrTargetUrl, 300, 300)
-            } else {
-                null
-            }
-        }
-        
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            shape = dialogShape,
-            containerColor = dColors.containerColor,
-            titleContentColor = dColors.titleColor,
-            textContentColor = dColors.textColor,
-            title = {
-                Text(
-                    text = "Remote File Transfer",
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .wrapContentHeight(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (!isLikelyLanReachable) {
-                        Text(
-                            text = "Detected an isolated network IP ($serverIp). Try connecting the car and phone to the same hotspot/LAN.",
-                            color = dColors.destructiveColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .padding(bottom = 12.dp)
-                                .fillMaxWidth()
-                        )
-                    }
-                    
-                    // Show instructions
-                    Text(
-                        text = if (relaySession != null) {
-                            "Scan the QR code from another device to open the relay upload page. After upload, the car will pull the file automatically."
-                        } else if (isEmulator) {
-                            "Emulator Mode: Open a browser inside the emulator and visit:"
-                        } else {
-                            "Scan the QR code or visit the URL from any device on the same network. Use a hotspot connection when needed:"
-                        },
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center,
-                        color = dColors.secondaryTextColor,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
-                    )
-                    
-                    // Show QR code if available
-                    qrBitmap?.let { bitmap ->
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "QR Code",
-                            modifier = Modifier
-                                .size(300.dp)
-                                .padding(vertical = 12.dp)
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = if (relaySession != null) {
-                            "Relay status: $relayStatusText"
-                        } else {
-                            "Upload .zip files containing DOS games.\nFiles will be saved to the games directory."
-                        },
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center,
-                        color = dColors.secondaryTextColor,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        wifiServer?.stop()
-                        isServerRunning = false
-                        Toast.makeText(
-                            this@RetroDriveCarLauncher,
-                            "File transfer server stopped",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = dColors.destructiveColor,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text("Stop Server")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        // Just close dialog, keep server running
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = dColors.textButtonColor)
-                ) {
-                    Text("Keep Running")
-                }
-            }
-        )
-    }
-
-    private fun hasExternalInternetConnection(): Boolean {
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val network = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(network) ?: return false
-        val hasRequiredTransport =
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
-        return hasRequiredTransport &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-    }
-
-    private suspend fun fetchRelayStatus(statusUrl: String): Pair<String, String?>? = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder().url(statusUrl).get().build()
-            relayHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    android.util.Log.w(TAG, "Relay status failed: ${response.code}")
-                    return@withContext null
-                }
-
-                val bodyText = response.body?.string() ?: return@withContext null
-                val json = JSONObject(bodyText)
-                val status = json.optString("status", "unknown")
-                val filename = if (json.has("filename") && !json.isNull("filename")) {
-                    json.optString("filename")
-                } else {
-                    null
-                }
-                return@withContext Pair(status, filename)
-            }
-        } catch (e: Exception) {
-            android.util.Log.w(TAG, "Relay status exception: ${e.message}")
-            null
-        }
-    }
-
-    private suspend fun initializeRelaySession(initUrl: String, initKey: String): Boolean = withContext(Dispatchers.IO) {
-        if (initKey.isBlank() || initKey == "CHANGE_ME_RELAY_INIT_KEY") {
-            android.util.Log.w(TAG, "Relay init key is not configured in BuildConfig")
-            return@withContext false
-        }
-
-        return@withContext try {
-            val request = Request.Builder()
-                .url(initUrl)
-                .post(okhttp3.FormBody.Builder().build())
-                .header("X-RetroDrive-Init-Key", initKey)
-                .header("Accept", "application/json")
-                .build()
-
-            relayHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    android.util.Log.w(TAG, "Relay init failed: ${response.code}")
-                    return@withContext false
-                }
-                true
-            }
-        } catch (e: Exception) {
-            android.util.Log.w(TAG, "Relay init exception: ${e.message}")
-            false
-        }
-    }
-
-    private suspend fun downloadAndImportFromRelay(
-        downloadUrl: String,
-        fallbackFilename: String?
-    ): GameImportManager.ImportResult = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder().url(downloadUrl).get().build()
-            relayHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext GameImportManager.ImportResult(
-                        success = false,
-                        message = "Download failed (${response.code})"
-                    )
-                }
-
-                val body = response.body
-                    ?: return@withContext GameImportManager.ImportResult(false, "Download had no body")
-
-                val contentLength = body.contentLength()
-                if (contentLength == 0L) {
-                    return@withContext GameImportManager.ImportResult(false, "Downloaded file was empty")
-                }
-
-                val stream = body.byteStream()
-
-                val contentDisposition = response.header("Content-Disposition")
-                val filenameFromHeader = contentDisposition
-                    ?.substringAfter("filename=", "")
-                    ?.trim('"')
-                    ?.takeIf { it.isNotBlank() }
-
-                val finalFilename = filenameFromHeader ?: fallbackFilename ?: "relay_upload.zip"
-                stream.use {
-                    return@withContext GameImportManager.importUploadedStream(
-                        context = this@RetroDriveCarLauncher,
-                        filename = finalFilename,
-                        inputStream = it
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "Relay download/import failed", e)
-            GameImportManager.ImportResult(false, "Relay import failed: ${e.message}")
         }
     }
 
@@ -1347,7 +922,7 @@ open class RetroDriveCarLauncher : ComponentActivity() {
             },
             text = {
                 Text(
-                    text = "Welcome to RetrodriveAA trial mode. You get one successful remote upload. After that, purchase full access to continue uploading.",
+                    text = "Welcome to RetrodriveAA trial mode. Purchase the full version to unlock the complete experience.",
                     textAlign = TextAlign.Center
                 )
             },
@@ -1386,7 +961,7 @@ open class RetroDriveCarLauncher : ComponentActivity() {
             },
             text = {
                 Text(
-                    text = "Purchase the full version (€9.99) to continue and unlock remote file transfer.",
+                    text = "Purchase the full version (€9.99) to continue and unlock the full app.",
                     textAlign = TextAlign.Center
                 )
             },
@@ -1415,27 +990,6 @@ open class RetroDriveCarLauncher : ComponentActivity() {
                 }
             }
         )
-    }
-    
-    /**
-     * Generate QR code bitmap from text
-     */
-    private fun generateQRCode(text: String, width: Int, height: Int): Bitmap? {
-        return try {
-            val writer = QRCodeWriter()
-            val bitMatrix = writer.encode(text, BarcodeFormat.QR_CODE, width, height)
-            
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
-            for (x in 0 until width) {
-                for (y in 0 until height) {
-                    bitmap.setPixel(x, y, if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
-                }
-            }
-            bitmap
-        } catch (e: WriterException) {
-            android.util.Log.e("RetroDriveCarLauncher", "Failed to generate QR code", e)
-            null
-        }
     }
     
     @Composable

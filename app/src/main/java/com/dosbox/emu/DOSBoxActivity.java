@@ -52,27 +52,6 @@ import com.dosbox.emu.input.InputDirector;
  */ 
 
 public class DOSBoxActivity extends SDLActivity implements VirtualDPadView.OnDPadEventListener, VirtualButtonsView.OnButtonEventListener, WifiControllerServer.ControllerEventListener {
-        // Reference to WifiTransferServer if available (public for easy access)
-        public static Object wifiTransferServerInstance = null;
-
-        // Call this before starting WifiControllerServer to stop WifiTransferServer if running
-        private void stopWifiTransferServerIfRunning() {
-            Log.d(TAG, "Checking if WifiTransferServer is running...");
-            try {
-                if (wifiTransferServerInstance != null) {
-                    Log.i(TAG, "Found WifiTransferServer instance, attempting to stop it...");
-                    // Use reflection to call stop() on WifiTransferServer
-                    java.lang.reflect.Method stopMethod = wifiTransferServerInstance.getClass().getMethod("stop");
-                    stopMethod.invoke(wifiTransferServerInstance);
-                    wifiTransferServerInstance = null; // Clear reference
-                    Log.i(TAG, "Successfully stopped WifiTransferServer before starting WifiControllerServer");
-                } else {
-                    Log.d(TAG, "No WifiTransferServer instance found (not running)");
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to stop WifiTransferServer: " + e.getMessage(), e);
-            }
-        }
     private static final String TAG = "DOSBox";
     private LinearLayout floatingToolStack;
     private FrameLayout settingsButton;

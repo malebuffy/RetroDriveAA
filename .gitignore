@@ -35,5 +35,3 @@ build*.txt
 *.p12
 app/build/
 cloudflare-worker/.wrangler/
-web-relay-php/uploads/
-web-relay-php/data/
